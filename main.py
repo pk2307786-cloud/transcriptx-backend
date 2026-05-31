@@ -1,52 +1,50 @@
-from fastapi import FastAPI
-from youtube_transcript_api import YouTubeTranscriptApi, TranscriptsDisabled, NoTranscriptFound
+from flask import Flask, request, jsonify
+from youtube_transcript_api import YouTubeTranscriptApi
 import re
 
-app = FastAPI()
-
+app = Flask(__name__)
 
 def extract_video_id(url):
     regex = r"(?:v=|\/)([0-9A-Za-z_-]{11}).*"
     match = re.search(regex, url)
     return match.group(1) if match else None
 
+@app.route("/transcript", methods=["POST"])
+def get_transcript():
+    data = request.get_json()
 
-def get_youtube_transcript(video_id):
+    url = data.get("url")
+    video_id = extract_video_id(url)
+
+    if not video_id:
+        return jsonify({
+            "success": False,
+            "error": "Invalid YouTube URL"
+        })
+
     try:
         ytt_api = YouTubeTranscriptApi()
 
         transcript_list = ytt_api.list(video_id)
 
         transcript = transcript_list.find_transcript(
-            ['hi', 'en']
+            ["hi", "en"]
         )
 
-        fetched_transcript = transcript.fetch()
+        fetched = transcript.fetch()
 
-        return " ".join([item.text for item in fetched_transcript])
+        text = " ".join([item.text for item in fetched])
+
+        return jsonify({
+            "success": True,
+            "transcript": text
+        })
 
     except Exception as e:
-        return f"No transcript available: {str(e)}"
-
-
-@app.post("/transcript")
-async def get_transcript(data: dict):
-    url = data.get("url")
-
-    video_id = extract_video_id(url)
-
-    if not video_id:
-        return {"success": False, "error": "Invalid YouTube URL"}
-
-    result = get_youtube_transcript(video_id)
-
-    if result.startswith("No transcript available"):
-        return {
+        return jsonify({
             "success": False,
-            "error": result
-        }
+            "error": str(e)
+        })
 
-    return {
-        "success": True,
-        "transcript": result
-    }
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
